@@ -35,6 +35,9 @@ jobs:
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      TAG: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -49,42 +52,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker image (no push)
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          push: false
-          tags: the-button:${{ github.sha }}
-          load: true
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'the-button:${{ github.sha }}'
-          format: 'table'
-          exit-code: '0'
-          ignore-unfixed: true
-          severity: 'CRITICAL,HIGH'
-          timeout: '5m'
-
-      - name: Test Docker image
-        run: |
-          docker run --name test-container -d -p 8000:8000 the-button:${{ github.sha }}
-          for i in {1..10}; do
-            if curl -s http://localhost:8000/ | grep -q "Ping"; then
-              echo "Application available!"
-              break
-            fi
-            if [ $i -eq 10 ]; then
-              echo "Application test timed out"
-              exit 1
-            fi
-            echo "Retry $i – Waiting 1 sec..."
-            sleep 1
-          done
-
-      - name: Push image with both tags
-        if: github.event_name != 'pull_request'
+      - name: Build Docker image
         uses: docker/build-push-action@v3
         with:
           context: .
@@ -93,36 +61,31 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/the-button:${{ github.sha }}
             ${{ secrets.DOCKER_USERNAME }}/the-button:latest
 
-  deploy-to-dev:
+  deploy-to-ec2:
     needs: build-and-push
-    runs-on: ubuntu-latest
-    environment: development
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Show environment variables
-        run: |
-          echo "Deploying to ${{ vars.ENVIRONMENT_NAME }} environment"
-          echo "Using token: ${{ secrets.DEPLOY_TOKEN != '' && '***' || 'Not set' }}"
-      - name: Mock deployment
-        run: |
-          echo "Starting deployment to development environment..."
-          sleep 5
-          echo "Deployment to development environment completed!"
-
-  deploy-to-production:
-    needs: deploy-to-dev
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Show environment variables
+      - uses: actions/checkout@v3
+
+      - name: Install SSH Key
         run: |
-          echo "Deploying to ${{ vars.ENVIRONMENT_NAME }} environment"
-          echo "Using token: ${{ secrets.DEPLOY_TOKEN != '' && '***' || 'Not set' }}"
-      - name: Mock deployment
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Add EC2 to known hosts
+        run: ssh-keyscan ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Make deploy script executable
+        run: chmod +x .github/scripts/deploy.sh
+
+      - name: Run deploy script
+        env:
+          IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/the-button
+          TAG: ${{ github.sha }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          ENV_NAME: production
         run: |
-          echo "Starting deployment to production environment..."
-          sleep 10
-          echo "Deployment to production environment completed!"
+          ./.github/scripts/deploy.sh "$IMAGE_NAME" "$TAG" "$EC2_HOST" "$EC2_USER" "$ENV_NAME"
