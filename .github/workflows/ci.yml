@@ -52,7 +52,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v3
         with:
           context: .
@@ -67,6 +67,7 @@ jobs:
     environment: development
     steps:
       - uses: actions/checkout@v3
+
       - name: Mock deployment to dev
         run: |
           echo "Mock deployment to dev (placeholder step)"
@@ -94,13 +95,13 @@ jobs:
 
       - name: Prepare deployment files
         run: |
-          cp .env.prod ./
-          cp docker-compose.yml ./
+          cp .env.prod .env.prod.copy
+          cp docker-compose.yml ./docker-compose.prod.yml
 
       - name: Deploy to EC2
         env:
           IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/the-button
-          TAG: ${{ github.sha }}
+          TAG: latest
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           ENV_NAME: production
