@@ -83,20 +83,18 @@ jobs:
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/deploy_key
 
-      - name: Add EC2 to known hosts
+      - name: Adding Known Hosts
         run: |
           ssh-keyscan ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Make deploy script executable
-        run: chmod +x .github/scripts/deploy.sh
-
-      - name: Prepare deployment files
+      - name: Prepare deployment
         run: |
-          cp .env.prod .env.prod.copy
-          cp docker-compose.yml ./docker-compose.prod.yml
+          chmod +x ./.github/scripts/deploy.sh
 
       - name: Deploy to EC2
         env:
