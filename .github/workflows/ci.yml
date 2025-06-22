@@ -39,6 +39,9 @@ jobs:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       TAG: ${{ github.sha }}
     steps:
+      - name: Test docker login
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -52,7 +55,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v3
         with:
           context: .
@@ -61,8 +64,20 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/the-button:${{ github.sha }}
             ${{ secrets.DOCKER_USERNAME }}/the-button:latest
 
-  deploy-to-ec2:
+  deploy-to-dev:
     needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Mock deployment to dev
+        run: |
+          echo "Mock deployment to dev (placeholder step)"
+          sleep 2
+
+  deploy-to-production:
+    needs: deploy-to-dev
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -71,21 +86,26 @@ jobs:
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/deploy_key
 
-      - name: Add EC2 to known hosts
-        run: ssh-keyscan ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      - name: Adding Known Hosts
+        run: |
+          ssh-keyscan ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Make deploy script executable
-        run: chmod +x .github/scripts/deploy.sh
+      - name: Prepare deployment
+        run: |
+          chmod +x ./.github/scripts/deploy.sh
 
-      - name: Run deploy script
+      - name: Deploy to EC2
         env:
           IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/the-button
-          TAG: ${{ github.sha }}
+          TAG: latest
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           ENV_NAME: production
         run: |
-          ./.github/scripts/deploy.sh "$IMAGE_NAME" "$TAG" "$EC2_HOST" "$EC2_USER" "$ENV_NAME"
+          echo "Starting deployment to EC2..."
+          ./.github/scripts/deploy.sh $IMAGE_NAME $TAG $EC2_HOST $EC2_USER $ENV_NAME
