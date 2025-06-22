@@ -39,4 +39,4 @@ Masz dwie możliwości:
 🔹 4. Uruchom serwer
 `python manage.py runserver`
 
-ZMIANA
+ZMIANA2
