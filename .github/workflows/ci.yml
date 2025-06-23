@@ -37,11 +37,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      TAG: ${{ github.sha }}
     steps:
       - name: Test docker login
         run: |
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -70,15 +70,14 @@ jobs:
     environment: development
     steps:
       - uses: actions/checkout@v3
-
       - name: Mock deployment to dev
         run: |
           echo "Mock deployment to dev (placeholder step)"
           sleep 2
 
   release:
-    runs-on: ubuntu-latest
     needs: deploy-to-dev
+    runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.versioning.outputs.new_tag }}
     steps:
@@ -117,18 +116,17 @@ jobs:
       - name: Tag and push Docker image with version
         if: steps.versioning.outputs.new_tag
         run: |
-          # Pobierz najnowszy obraz
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          docker pull ${{ secrets.DOCKER_USERNAME }}/the-button:${SHORT_SHA}
+          # Pobierz obraz tagged as latest
+          docker pull ${{ secrets.DOCKER_USERNAME }}/the-button:latest
 
-          # Otaguj obraz nowym numerem wersji
-          docker tag ${{ secrets.DOCKER_USERNAME }}/the-button:${SHORT_SHA} ${{ secrets.DOCKER_USERNAME }}/the-button:${{ steps.versioning.outputs.new_tag }}
+          # Otaguj pod nowy semantyczny numer
+          docker tag ${{ secrets.DOCKER_USERNAME }}/the-button:latest \
+                     ${{ secrets.DOCKER_USERNAME }}/the-button:${{ steps.versioning.outputs.new_tag }}
 
-          # Wypchnij otagowany obraz do rejestru
+          # Wypchnij nową wersję
           docker push ${{ secrets.DOCKER_USERNAME }}/the-button:${{ steps.versioning.outputs.new_tag }}
 
-          # Aktualizuj tag latest
-          docker tag ${{ secrets.DOCKER_USERNAME }}/the-button:${SHORT_SHA} ${{ secrets.DOCKER_USERNAME }}/the-button:latest
+          # (Opcjonalnie) nadpisz latest ponownie
           docker push ${{ secrets.DOCKER_USERNAME }}/the-button:latest
 
           echo "Obraz Docker został otagowany wersją ${{ steps.versioning.outputs.new_tag }} i wypchnięty do Docker Hub"
